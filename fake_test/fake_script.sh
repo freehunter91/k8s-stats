@@ -2,7 +2,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: error-pod-exit-code
-  namespace: test2
 spec:
   containers:
   - name: failing-container
