@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================
-# Kubernetes Pod Monitor 전체 프로젝트 생성 스크립트 (v1.6 - OIDC 인증 자동화)
+# Kubernetes Pod Monitor 전체 프로젝트 생성 스크립트 (v1.7 - Rust 빌드 경로 수정)
 # 이 스크립트는 k8s-pod-monitor 디렉터리를 생성하고
 # 모든 소스 코드와 설정 파일을 자동으로 작성합니다.
 # 실행 권한 부여 후 실행하세요: chmod +x create_k8s_monitor.sh && ./create_k8s_monitor.sh
@@ -37,11 +37,9 @@ cat << 'EOF' > rust_analyzer/Cargo.toml
 name = "rust_analyzer"
 version = "0.1.0"
 edition = "2021"
-
 [lib]
 name = "rust_analyzer"
 crate-type = ["cdylib"]
-
 [dependencies]
 pyo3 = { version = "0.20", features = ["extension-module"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -83,7 +81,7 @@ fn rust_analyzer(_py: Python, m: &PyModule) -> PyResult<()> {
 EOF
 
 # --- 4. build.sh 생성 ---
-echo "INFO: Creating build.sh..."
+echo "INFO: Creating build.sh (v1.7)..."
 cat << 'EOF' > build.sh
 #!/bin/bash
 set -e
@@ -115,7 +113,8 @@ if command -v cargo &> /dev/null; then
     echo "  - Building Rust module with maturin..."
     if maturin build --release --strip --manifest-path rust_analyzer/Cargo.toml; then
         echo "  - Rust module built successfully!"
-        WHEEL_FILE=$(find target/wheels -name "*.whl" | head -n 1)
+        # FIX: Find the wheel inside the Rust project's target directory
+        WHEEL_FILE=$(find rust_analyzer/target/wheels -name "*.whl" | head -n 1)
         if [ -f "$WHEEL_FILE" ]; then
             echo "  - Installing Rust module: $WHEEL_FILE"
             pip install "$WHEEL_FILE" --force-reinstall
@@ -138,8 +137,8 @@ fi
 echo "Build process complete."
 EOF
 
-# --- 5. main.py 생성 (CLI 모드) ---
-echo "INFO: Creating main.py (v1.6 - OIDC Auto-Auth Support)..."
+# --- 5. main.py 생성 ---
+echo "INFO: Creating main.py (v1.7)..."
 cat << 'EOF' > main.py
 import os
 import json
@@ -167,10 +166,6 @@ DATA_DIR = Path("data")
 NORMAL_POD_PHASES = ["Succeeded", "Running"]
 
 def get_all_contexts():
-    """
-    kubeconfig 파일에 정의된 모든 컨텍스트 정보를 반환합니다.
-    환경 변수나 기본 경로를 통해 kubeconfig를 찾습니다.
-    """
     try:
         contexts, _ = config.list_kube_config_contexts()
         if not contexts:
@@ -183,10 +178,6 @@ def get_all_contexts():
         return []
 
 def check_abnormal_pods(api_client, cluster_name):
-    """
-    지정된 클러스터의 비정상 상태 Pod 목록을 스캔하여 반환합니다.
-    컨테이너 상태까지 점검하여 CrashLoopBackOff 등을 탐지합니다.
-    """
     abnormal_pods = []
     try:
         pods = api_client.list_pod_for_all_namespaces(watch=False, timeout_seconds=120)
@@ -221,10 +212,6 @@ def check_abnormal_pods(api_client, cluster_name):
     return abnormal_pods
 
 def check_all_clusters():
-    """
-    모든 클러스터의 비정상 Pod를 스캔하고 통합 목록을 반환합니다.
-    OIDC 인증을 위해 내부적으로 kubectl을 호출합니다.
-    """
     all_abnormal_pods = []
     contexts = get_all_contexts()
     if not contexts:
@@ -342,8 +329,8 @@ if __name__ == "__main__":
     print("\n--- CLI run finished. ---")
 EOF
 
-# --- 6. web_server.py 생성 (웹 대시보드) ---
-echo "INFO: Creating web_server.py (v1.6)..."
+# --- 6. web_server.py 생성 ---
+echo "INFO: Creating web_server.py (v1.7)..."
 cat << 'EOF' > web_server.py
 import threading
 import time
@@ -446,19 +433,21 @@ cat << 'EOF' > templates/dashboard.html
 EOF
 
 # --- 8. README.md 생성 ---
-echo "INFO: Creating README.md (v1.6)..."
+echo "INFO: Creating README.md (v1.7)..."
 cat << 'EOF' > README.md
-# Kubernetes Pod Monitor (v1.6)
+# Kubernetes Pod Monitor (v1.7)
 
 **오류 없이 즉시 실행 가능한 다중 클러스터** Kubernetes Pod 모니터링 시스템입니다.
-**Keycloak/OIDC 인증 환경을 완벽하게 지원**하도록 인증 로직이 개선되었습니다.
+**Keycloak/OIDC 인증 환경을 완벽하게 지원**하고 **Rust 빌드 경로 문제를 해결**한 최종 안정화 버전입니다.
 
 ## 🌟 주요 기능
 
 - **OIDC/Keycloak 인증 자동화**: 스크립트 실행 시 **자동으로 `kubectl`을 호출**하여 인증 토큰을 갱신합니다. 더 이상 수동으로 `kubectl`을 실행할 필요가 없습니다.
 - **정확한 탐지 로직**: Pod의 전체 `phase`뿐만 아니라 각 컨테이너의 개별 상태(`ready`)까지 점검하여 `CrashLoopBackOff` 등의 숨겨진 문제를 정확히 탐지합니다.
-- **명확한 실행 피드백**: 분석 시 Rust 가속 모드(🚀) 또는 순수 Python 모드(🐍)로 실행되는지 터미널에 배너를 표시합니다.
+- **안정적인 빌드**: Rust 모듈 빌드 시 정확한 경로를 찾아 설치하도록 `build.sh` 스크립트가 수정되었습니다.
 - **다중 클러스터 지원**: `kubeconfig`에 있는 모든 컨텍스트를 자동으로 순회하며 결과를 통합합니다.
+- **명확한 실행 피드백**: 분석 시 Rust 가속 모드(🚀) 또는 순수 Python 모드(🐍)로 실행되는지 터미널에 배너를 표시합니다.
+
 
 ## 🔧 설치 및 실행
 
