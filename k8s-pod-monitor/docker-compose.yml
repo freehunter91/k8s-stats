@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  k8s-monitor:
+    # Build the image from the Dockerfile in the current directory
+    build: .
+    
+    # Name the container for easier management
+    container_name: k8s-pod-monitor
+    
+    # Map host port 5000 to container port 5000 for the web UI
+    ports:
+      - "5000:5000"
+      
+    # Mount the local .kube directory into the container.
+    # This is CRUCIAL for the app to find clusters and for OIDC auth to work.
+    # ':ro' makes it read-only for better security.
+    volumes:
+      - ~/.kube:/root/.kube:ro
+      
+    # Keep the container running if it's in web mode
+    restart: unless-stopped
+      
+    # Default command to start the web server.
+    # To run the CLI, use: docker-compose run --rm k8s-monitor cli
+    command: ["web"]
+

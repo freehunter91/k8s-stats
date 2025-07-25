@@ -1,2 +1,13 @@
 /target
-k8s-pod-monitor
+k8s-pod-monitor/venv
+k8s-pod-monitor/__pycache__
+k8s-pod-monitor/.pytest_cache
+k8s-pod-monitor/.vscode
+k8s-pod-monitor/.idea
+k8s-pod-monitor/.DS_Store
+k8s-pod-monitor/.git
+k8s-pod-monitor/.gitignore
+k8s-pod-monitor/.env
+k8s-pod-monitor/data
+k8s-pod-monitor/rust_analyzer/target
+k8s-pod-monitor/rust_analyzer/Cargo.lock

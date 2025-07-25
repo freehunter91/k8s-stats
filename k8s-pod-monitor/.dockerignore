@@ -1,0 +1,28 @@
+# Git files
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+docker-compose.yml
+
+# Python virtual environment and cache
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Rust build artifacts (they are created inside the container)
+target/
+rust_analyzer/target/
+
+# Local data files
+data/
+
+# IDE files
+.idea/
+.vscode/
+
+# Build scripts that are no longer needed for Docker
+build.sh
+create_k8s_monitor.sh
