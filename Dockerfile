@@ -38,11 +38,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # This entire block is a single RUN command to optimize layers and cleanup.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates gnupg curl && \
-    # Add Kubernetes APT repository GPG key
+    # Add Kubernetes APT repository GPG key - Changed to v1.30
     mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
-    # Add the repository to the sources list
-    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list && \
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+    # Add the repository to the sources list - Changed to v1.30
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list && \
     # Update apt list again and install kubectl
     apt-get update && \
     apt-get install -y --no-install-recommends kubectl && \
