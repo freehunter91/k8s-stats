@@ -7,6 +7,12 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install common build tools that Rust might depend on
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential pkg-config && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install Rust toolchain
 # This curl command is generally very reliable.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -34,20 +40,21 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install kubectl using the official Kubernetes APT repository (most reliable method)
-# This entire block is a single RUN command to optimize layers and cleanup.
+# Install curl, then download and install kubectl directly (more robust against repo issues)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates gnupg curl && \
-    # Add Kubernetes APT repository GPG key - Changed to v1.30
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
-    # Add the repository to the sources list - Changed to v1.30
-    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list && \
-    # Update apt list again and install kubectl
-    apt-get update && \
-    apt-get install -y --no-install-recommends kubectl && \
-    # Clean up to keep the image small
-    apt-get purge -y --auto-remove gnupg curl && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    # Download kubectl binary (using a specific stable version, e.g., v1.30.2)
+    # Check https://kubernetes.io/releases/ for the latest stable client version.
+    curl -LO "https://dl.k8s.io/release/v1.30.2/bin/linux/amd64/kubectl" && \
+    # Download the checksum file
+    curl -LO "https://dl.k8s.io/release/v1.30.2/bin/linux/amd64/kubectl.sha256" && \
+    # Verify the checksum
+    echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check && \
+    # Install kubectl
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    # Clean up
+    rm kubectl kubectl.sha256 && \
+    apt-get purge -y --auto-remove curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
