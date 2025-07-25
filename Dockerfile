@@ -1,22 +1,14 @@
 # Stage 1: Build Environment - Compiles the Rust module
-FROM python:3.11-slim-bookworm AS builder
+# Use the full python image which includes build tools, reducing apt dependencies.
+FROM python:3.12-bookworm AS builder
 
 # Set environment variables for non-interactive installs
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies in a single, robust RUN command
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    curl \
-    build-essential \
-    pkg-config \
-    libssl-dev && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 # Install Rust toolchain
+# This curl command is generally very reliable.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
@@ -35,25 +27,27 @@ RUN maturin build --release --strip --manifest-path rust_analyzer/Cargo.toml
 
 
 # Stage 2: Final Production Image
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Define kubectl version for deterministic builds
-ARG KUBECTL_VERSION=1.28.4
-
-# Install runtime dependencies (kubectl) and clean up in one go
+# Install kubectl using the official Kubernetes APT repository (most reliable method)
+# This entire block is a single RUN command to optimize layers and cleanup.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    # Install pinned kubectl version
-    curl -LO "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl" && \
-    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
-    rm kubectl && \
-    # Clean up apt cache and remove curl to keep the image small
-    apt-get purge -y --auto-remove curl && \
+    apt-get install -y --no-install-recommends ca-certificates gnupg curl && \
+    # Add Kubernetes APT repository GPG key
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+    # Add the repository to the sources list
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list && \
+    # Update apt list again and install kubectl
+    apt-get update && \
+    apt-get install -y --no-install-recommends kubectl && \
+    # Clean up to keep the image small
+    apt-get purge -y --auto-remove gnupg curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -61,7 +55,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy installed Python packages and the built Rust wheel from the builder stage
-COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
 COPY --from=builder /app/rust_analyzer/target/wheels/*.whl .
 
 # Install the Rust wheel and then remove it
