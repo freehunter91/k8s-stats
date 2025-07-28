@@ -353,7 +353,7 @@ def analyze_changes(today_pods, yesterday_pods):
         
         result = json.loads(analyze_pod_changes(json.dumps(today_key_only), json.dumps(yesterday_key_only)))
         
-        # FIX: Use guaranteed order for creating lookup sets
+        # BUG FIX: Use guaranteed order for creating lookup sets, not unpredictable .values()
         new_keys = {(p['cluster'], p['namespace'], p['pod']) for p in result['new']}
         ongoing_keys = {(p['cluster'], p['namespace'], p['pod']) for p in result['ongoing']}
         resolved_keys = {(p['cluster'], p['namespace'], p['pod']) for p in result['resolved']}
@@ -498,12 +498,12 @@ cat << 'EOF' > README.md
 # Kubernetes Pod Monitor (v1.14 - Final Version)
 
 **오류 없이 즉시 실행 가능한 다중 클러스터** Kubernetes Pod 모니터링 시스템의 최종 완성 버전입니다.
-**Excel 파일에 상세 이벤트(실패 원인)와 노드 정보를 포함**하는 기능이 추가되었으며, 로컬 및 Docker 실행을 모두 지원합니다.
+모든 기능과 버그 수정이 완벽하게 반영되었으며, **로컬 및 Docker 실행을 모두 지원**합니다.
 
 ## 🌟 최종 기능 목록
 
 - **📋 상세 Excel 보고서**: "Download Excel" 클릭 시, 당일 발생한 모든 비정상 Pod 목록과 함께 **각 Pod의 할당 노드 및 상세 이벤트 로그**가 포함된 포괄적인 보고서를 다운로드합니다.
-- **인터랙티브 이벤트 조회**: 대시보드에서 Pod 이름을 클릭하여 상세한 실패 원인이 담긴 이벤트 로그를 팝업으로 즉시 확인할 수 있습니다.
+- **인터랙티브 이벤트 조회**: 대시보드의 비정상 Pod 이름을 클릭하여 상세한 실패 원인이 담긴 이벤트 로그를 팝업으로 즉시 확인할 수 있습니다.
 - **Docker 기반 완벽한 배포**: `docker-compose up` 단 한 줄로 모든 의존성(Python, Rust, kubectl) 설치, 빌드, 실행이 완료됩니다.
 - **OIDC/Keycloak 인증 자동화**: 스크립트 실행 시 **자동으로 `kubectl`을 호출**하여 인증 토큰을 갱신합니다.
 - **정확한 탐지 로직**: Pod의 `phase`와 각 컨테이너의 `ready` 상태까지 점검하여 `CrashLoopBackOff` 등의 문제를 정확히 탐지합니다.
@@ -533,4 +533,3 @@ docker-compose up --build
 # 3. (선택) CLI 모드 실행
 #    새 터미널을 열고 아래 명령어를 실행
 docker-compose run --rm k8s-monitor cli
-EOF
