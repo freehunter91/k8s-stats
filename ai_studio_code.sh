@@ -1,6 +1,6 @@
 #!/bin/bash
 # =================================================================
-# Kubernetes Pod Monitor 전체 프로젝트 생성 스크립트 (v1.14 - Final Version)
+# Kubernetes Pod Monitor 전체 프로젝트 생성 스크립트 (v1.13 - Detailed Excel Export)
 # 이 스크립트는 로컬 실행(build.sh)과 Docker 실행을 모두 지원하는 최종 완성본을 생성합니다.
 # 실행 권한 부여 후 실행하세요: chmod +x create_k8s_monitor.sh && ./create_k8s_monitor.sh
 # =================================================================
@@ -23,21 +23,37 @@ echo "INFO: Creating Dockerfile..."
 cat << 'EOF' > Dockerfile
 # Stage 1: Build Environment
 FROM python:3.11-slim-bookworm AS builder
+
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
-RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential pkg-config libssl-dev
+
+# Install OS dependencies for building
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev
+
+# Install Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
+
 WORKDIR /app
 COPY requirements.txt .
 COPY rust_analyzer/ rust_analyzer/
+
+# Install Python dependencies and build the Rust module
 RUN pip install --no-cache-dir -r requirements.txt
 RUN maturin build --release --strip --manifest-path rust_analyzer/Cargo.toml
 
+
 # Stage 2: Final Image
 FROM python:3.11-slim-bookworm
+
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
+
+# Install runtime dependencies: kubectl
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
@@ -45,15 +61,25 @@ RUN apt-get update && \
     rm kubectl && \
     apt-get purge -y --auto-remove curl && \
     rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
+# Copy installed Python packages and the built Rust wheel from the builder stage
 COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
 COPY --from=builder /app/rust_analyzer/target/wheels/*.whl .
+
+# Install the Rust wheel and then remove it
 RUN pip install --no-cache-dir *.whl && rm *.whl
+
+# Copy the application source code
 COPY main.py .
 COPY web_server.py .
 COPY templates/ templates/
 COPY entrypoint.sh .
+
+# Make entrypoint executable
 RUN chmod +x entrypoint.sh
+
 EXPOSE 5000
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["web"]
@@ -173,7 +199,7 @@ EOF
 
 
 # --- 6. 애플리케이션 파일들 생성 ---
-echo "INFO: Creating application source files (v1.14)..."
+echo "INFO: Creating application source files (v1.13)..."
 # requirements.txt
 cat << 'EOF' > requirements.txt
 kubernetes==28.1.0
@@ -352,11 +378,9 @@ def analyze_changes(today_pods, yesterday_pods):
         yesterday_key_only = [{"cluster": p["cluster"], "namespace": p["namespace"], "pod": p["pod"]} for p in yesterday_pods]
         
         result = json.loads(analyze_pod_changes(json.dumps(today_key_only), json.dumps(yesterday_key_only)))
-        
-        # BUG FIX: Use guaranteed order for creating lookup sets, not unpredictable .values()
-        new_keys = {(p['cluster'], p['namespace'], p['pod']) for p in result['new']}
-        ongoing_keys = {(p['cluster'], p['namespace'], p['pod']) for p in result['ongoing']}
-        resolved_keys = {(p['cluster'], p['namespace'], p['pod']) for p in result['resolved']}
+        new_keys = {tuple(p.values()) for p in result['new']}
+        ongoing_keys = {tuple(p.values()) for p in result['ongoing']}
+        resolved_keys = {tuple(p.values()) for p in result['resolved']}
         
         return {
             "new": [p for p in today_pods if (p['cluster'], p['namespace'], p['pod']) in new_keys],
@@ -406,6 +430,7 @@ def download_excel():
     
     todays_issues = cached_data['lists']['new'] + cached_data['lists']['ongoing']
     
+    # Add detailed events to each pod record for the Excel file
     all_pod_details = []
     for pod in todays_issues:
         pod_details = pod.copy()
@@ -418,6 +443,7 @@ def download_excel():
         df = pd.DataFrame(columns=['cluster', 'namespace', 'pod', 'node', 'status', 'reasons', 'detailed_events', 'timestamp'])
     else:
         df = pd.DataFrame(all_pod_details)
+        # Reorder columns for the final Excel output
         df = df[['cluster', 'namespace', 'pod', 'node', 'status', 'reasons', 'detailed_events', 'timestamp']]
     
     output = io.BytesIO()
@@ -479,7 +505,7 @@ EOF
 
 # templates/dashboard.html
 cat << 'EOF' > templates/dashboard.html
-<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kubernetes Pod Monitor</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>body{background-color:#f8f9fa}.card{box-shadow:0 2px 4px #0000001a}.table-hover tbody tr:hover{cursor:pointer}#loading-spinner{position:fixed;top:50%;left:50%;z-index:1050;transform:translate(-50%,-50%)}.modal-body .event-item{border-bottom:1px solid #dee2e6;padding-bottom:.5rem;margin-bottom:.5rem}.modal-body .event-item:last-child{border-bottom:0}</style></head><body><div id="loading-spinner" class="spinner-border text-primary" role="status" style="display:none"></div><div class="container-fluid mt-4"><div class="d-flex justify-content-between align-items-center mb-4"><h1 class="h3">📊 Kubernetes Pod Monitor (Final Version)</h1><div><a href="/api/download/excel" class="btn btn-success">💾 Download Excel</a><button id="force-refresh-btn" class="btn btn-primary ms-2">🔄 Force Refresh</button></div></div><div class="row mb-3"><div class="col"><small class="text-muted">Last Updated: <span id="last-updated">N/A</span> | Background Status: <span id="background-status">N/A</span></small></div></div><div class="row mb-4"><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">🚨 Total Abnormal Pods</h5><p id="stat-total" class="card-text text-danger fs-1 fw-bold">0</p></div></div></div><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">✨ New Issues (Today)</h5><p id="stat-new" class="card-text text-warning fs-1 fw-bold">0</p></div></div></div><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">⏳ Ongoing Issues</h5><p id="stat-ongoing" class="card-text text-info fs-1 fw-bold">0</p></div></div></div><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">✅ Resolved Issues</h5><p id="stat-resolved" class="card-text text-success fs-1 fw-bold">0</p></div></div></div></div><div class="row mb-4"><div class="col-lg-6 mb-3"><div class="card h-100"><div class="card-header">Status Distribution</div><div class="card-body"><div id="chart-status-distribution"></div></div></div></div><div class="col-lg-6 mb-3"><div class="card h-100"><div class="card-header">Abnormal Pods by Cluster</div><div class="card-body"><div id="chart-cluster-distribution"></div></div></div></div></div><div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs" id="pod-tabs"><li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-new">New <span id="badge-new" class="badge bg-warning"></span></a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ongoing">Ongoing <span id="badge-ongoing" class="badge bg-info"></span></a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-resolved">Resolved <span id="badge-resolved" class="badge bg-success"></span></a></li></ul></div><div class="card-body"><div class="tab-content"><div class="tab-pane fade show active" id="tab-new"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Cluster</th><th>Namespace</th><th>Pod</th><th>Node</th><th>Status</th><th>Reasons</th></tr></thead><tbody id="table-body-new"></tbody></table></div></div><div class="tab-pane fade" id="tab-ongoing"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Cluster</th><th>Namespace</th><th>Pod</th><th>Node</th><th>Status</th><th>Reasons</th></tr></thead><tbody id="table-body-ongoing"></tbody></table></div></div><div class="tab-pane fade" id="tab-resolved"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Cluster</th><th>Namespace</th><th>Pod</th><th>Node</th><th>Status</th><th>Reasons</th></tr></thead><tbody id="table-body-resolved"></tbody></table></div></div></div></div></div></div><div class="modal fade" id="eventModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="eventModalLabel">Pod Events</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="eventModalBody"></div></div></div></div><script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script><script>
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kubernetes Pod Monitor</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>body{background-color:#f8f9fa}.card{box-shadow:0 2px 4px #0000001a}.table-hover tbody tr:hover{cursor:pointer}#loading-spinner{position:fixed;top:50%;left:50%;z-index:1050;transform:translate(-50%,-50%)}.modal-body .event-item{border-bottom:1px solid #dee2e6;padding-bottom:.5rem;margin-bottom:.5rem}.modal-body .event-item:last-child{border-bottom:0}</style></head><body><div id="loading-spinner" class="spinner-border text-primary" role="status" style="display:none"></div><div class="container-fluid mt-4"><div class="d-flex justify-content-between align-items-center mb-4"><h1 class="h3">📊 Kubernetes Pod Monitor (Excel Export)</h1><div><a href="/api/download/excel" class="btn btn-success">💾 Download Excel</a><button id="force-refresh-btn" class="btn btn-primary ms-2">🔄 Force Refresh</button></div></div><div class="row mb-3"><div class="col"><small class="text-muted">Last Updated: <span id="last-updated">N/A</span> | Background Status: <span id="background-status">N/A</span></small></div></div><div class="row mb-4"><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">🚨 Total Abnormal Pods</h5><p id="stat-total" class="card-text text-danger fs-1 fw-bold">0</p></div></div></div><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">✨ New Issues (Today)</h5><p id="stat-new" class="card-text text-warning fs-1 fw-bold">0</p></div></div></div><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">⏳ Ongoing Issues</h5><p id="stat-ongoing" class="card-text text-info fs-1 fw-bold">0</p></div></div></div><div class="col-lg-3 col-md-6 mb-3"><div class="card text-center h-100"><div class="card-body"><h5 class="card-title">✅ Resolved Issues</h5><p id="stat-resolved" class="card-text text-success fs-1 fw-bold">0</p></div></div></div></div><div class="row mb-4"><div class="col-lg-6 mb-3"><div class="card h-100"><div class="card-header">Status Distribution</div><div class="card-body"><div id="chart-status-distribution"></div></div></div></div><div class="col-lg-6 mb-3"><div class="card h-100"><div class="card-header">Abnormal Pods by Cluster</div><div class="card-body"><div id="chart-cluster-distribution"></div></div></div></div></div><div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs" id="pod-tabs"><li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-new">New <span id="badge-new" class="badge bg-warning"></span></a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ongoing">Ongoing <span id="badge-ongoing" class="badge bg-info"></span></a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-resolved">Resolved <span id="badge-resolved" class="badge bg-success"></span></a></li></ul></div><div class="card-body"><div class="tab-content"><div class="tab-pane fade show active" id="tab-new"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Cluster</th><th>Namespace</th><th>Pod</th><th>Node</th><th>Status</th><th>Reasons</th></tr></thead><tbody id="table-body-new"></tbody></table></div></div><div class="tab-pane fade" id="tab-ongoing"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Cluster</th><th>Namespace</th><th>Pod</th><th>Node</th><th>Status</th><th>Reasons</th></tr></thead><tbody id="table-body-ongoing"></tbody></table></div></div><div class="tab-pane fade" id="tab-resolved"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Cluster</th><th>Namespace</th><th>Pod</th><th>Node</th><th>Status</th><th>Reasons</th></tr></thead><tbody id="table-body-resolved"></tbody></table></div></div></div></div></div></div><div class="modal fade" id="eventModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="eventModalLabel">Pod Events</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="eventModalBody"></div></div></div></div><script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script><script>
     const G={API_URL:"/api/data",REFRESH_URL:"/api/run-check",EVENTS_URL:"/api/pod/events",spinner:document.getElementById("loading-spinner"),modal:null};function showSpinner(){G.spinner.style.display="block"}function hideSpinner(){G.spinner.style.display="none"}
     function createTableRow(p){const statusBadgeColor=p.status==="Running"?"bg-warning":"bg-danger";return`<tr onclick="showPodEvents('${p.context_name}','${p.namespace}','${p.pod}')"><td><b>${p.cluster||"N/A"}</b></td><td>${p.namespace||"N/A"}</td><td>${p.pod||"N/A"}</td><td>${p.node||"N/A"}</td><td><span class="badge ${statusBadgeColor}">${p.status||"N/A"}</span></td><td>${p.reasons||"N/A"}</td></tr>`}
     async function showPodEvents(context,namespace,pod){if(!G.modal)G.modal=new bootstrap.Modal(document.getElementById("eventModal"));const modalTitle=document.getElementById("eventModalLabel"),modalBody=document.getElementById("eventModalBody");modalTitle.textContent=`Events for: ${namespace}/${pod}`;modalBody.innerHTML='<div class="text-center"><div class="spinner-border"></div></div>';G.modal.show();try{const url=`${G.EVENTS_URL}?context=${encodeURIComponent(context)}&namespace=${encodeURIComponent(namespace)}&pod=${encodeURIComponent(pod)}`,response=await fetch(url);if(!response.ok)throw new Error(`Network response was not ok: ${response.statusText}`);const events=await response.json();if(events.length===0){modalBody.innerHTML='<p class="text-muted">No events found for this pod.</p>';return}
@@ -493,17 +519,18 @@ cat << 'EOF' > templates/dashboard.html
 EOF
 
 # --- 9. README.md 생성 ---
-echo "INFO: Creating README.md (v1.14 - Final Version)..."
+echo "INFO: Creating README.md (v1.13 - Final Version)..."
 cat << 'EOF' > README.md
-# Kubernetes Pod Monitor (v1.14 - Final Version)
+# Kubernetes Pod Monitor (v1.13 - Detailed Excel Export)
 
 **오류 없이 즉시 실행 가능한 다중 클러스터** Kubernetes Pod 모니터링 시스템의 최종 완성 버전입니다.
-모든 기능과 버그 수정이 완벽하게 반영되었으며, **로컬 및 Docker 실행을 모두 지원**합니다.
+**Excel 파일에 상세 이벤트(실패 원인)를 포함**하는 기능이 추가되었으며, 로컬 및 Docker 실행을 모두 지원합니다.
 
 ## 🌟 최종 기능 목록
 
-- **📋 상세 Excel 보고서**: "Download Excel" 클릭 시, 당일 발생한 모든 비정상 Pod 목록과 함께 **각 Pod의 할당 노드 및 상세 이벤트 로그**가 포함된 포괄적인 보고서를 다운로드합니다.
+- **📋 상세 Excel 보고서**: "Download Excel" 클릭 시, 당일 발생한 모든 비정상 Pod 목록과 함께 **각 Pod의 상세 이벤트 로그**가 포함된 포괄적인 보고서를 다운로드합니다.
 - **인터랙티브 이벤트 조회**: 대시보드의 비정상 Pod 이름을 클릭하여 상세한 실패 원인이 담긴 이벤트 로그를 팝업으로 즉시 확인할 수 있습니다.
+- **할당된 노드 정보 표시**: 모든 Pod 목록에 해당 Pod가 스케줄링된 **Node의 이름**이 표시됩니다.
 - **Docker 기반 완벽한 배포**: `docker-compose up` 단 한 줄로 모든 의존성(Python, Rust, kubectl) 설치, 빌드, 실행이 완료됩니다.
 - **OIDC/Keycloak 인증 자동화**: 스크립트 실행 시 **자동으로 `kubectl`을 호출**하여 인증 토큰을 갱신합니다.
 - **정확한 탐지 로직**: Pod의 `phase`와 각 컨테이너의 `ready` 상태까지 점검하여 `CrashLoopBackOff` 등의 문제를 정확히 탐지합니다.
