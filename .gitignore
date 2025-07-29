@@ -11,3 +11,5 @@ k8s-pod-monitor/.env
 k8s-pod-monitor/data
 k8s-pod-monitor/rust_analyzer/target
 k8s-pod-monitor/rust_analyzer/Cargo.lock
+k8s-pod-monitor_backup/
+k8s-pod-monitor-v1.7

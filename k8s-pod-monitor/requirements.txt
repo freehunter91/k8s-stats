@@ -1,8 +1,0 @@
-kubernetes==28.1.0
-requests==2.31.0
-flask==2.3.2
-flask-cors==4.0.0
-plotly==5.15.0
-maturin==1.2.3
-pandas==2.2.2
-openpyxl==3.1.2
