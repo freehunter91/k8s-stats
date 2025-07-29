@@ -28,7 +28,6 @@ if command -v cargo &> /dev/null; then
     echo "  - Building Rust module with maturin..."
     if maturin build --release --strip --manifest-path rust_analyzer/Cargo.toml; then
         echo "  - Rust module built successfully!"
-        # FIX: Find the wheel inside the Rust project's target directory
         WHEEL_FILE=$(find rust_analyzer/target/wheels -name "*.whl" | head -n 1)
         if [ -f "$WHEEL_FILE" ]; then
             echo "  - Installing Rust module: $WHEEL_FILE"
